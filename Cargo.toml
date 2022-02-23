@@ -1,0 +1,29 @@
+[package]
+name = "minting-tool"
+version = "0.1.0"
+edition = "2021"
+authors = ["DFINITY Stiftung"]
+license = "Apache-2.0"
+rust-version = "1.58"
+description = "A minting tool for DIP721 NFT canisters on the Internet Computer blockchain"
+homepage = "https://github.com/dfinity/experimental-minting-tool"
+repository = "https://github.com/dfinity/experimental-minting-tool"
+keywords = ["nft", "mint", "ic", "blockchain", "internet computer"]
+categories = ["command-line-utilities", "cryptography::cryptocurrencies"]
+
+[dependencies]
+anyhow = "1"
+candid = "0.7"
+cid = "0.7"
+clap = { version = "3", features = ["derive"] }
+dialoguer = "0.9"
+garcon = "0.2"
+hex = "0.4"
+ic-agent = "0.11"
+mime_guess = "2"
+serde_json = "1"
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["rt", "macros"] }
+sha2 = "0.10"
+thiserror = "1"
+uriparse = "0.6"
