@@ -9,7 +9,6 @@ use std::{
     fs::{self, File},
     path::{Path, PathBuf},
     process,
-    time::Duration,
 };
 
 use anyhow::{bail, Context, Result};
@@ -17,9 +16,8 @@ use candid::Principal;
 use cid::Cid;
 use clap::{ArgEnum, Parser};
 use dialoguer::Confirm;
-use garcon::{Delay, Waiter};
 use ic_agent::{
-    agent::http_transport::ReqwestHttpReplicaV2Transport, identity::BasicIdentity, Agent,
+    agent::http_transport::ReqwestHttpReplicaV2Transport, identity::Secp256k1Identity, Agent,
     AgentError,
 };
 use sha2::{Digest, Sha256};
@@ -108,11 +106,10 @@ async fn rmain() -> Result<()> {
         data: &data,
         key_val_data: metadata,
     };
-    let waiter = get_waiter();
     let res = agent
         .update(&mint.canister, "mintDip721")
         .with_arg(Encode!(&owner, &[metadata], &data)?)
-        .call_and_wait(waiter)
+        .call_and_wait()
         .await;
     let res = if let Err(AgentError::ReplicaError { reject_code: 3, .. }) = &res {
         res.context(format!("canister {canister} does not support minting"))?
@@ -204,7 +201,8 @@ async fn get_agent(network: Network) -> Result<Agent> {
         default.default.as_ref(),
         "identity.pem".as_ref(),
     ]);
-    let identity = BasicIdentity::from_pem_file(pemfile)?;
+
+    let identity = Secp256k1Identity::from_pem_file(&pemfile)?;
     let agent = Agent::builder()
         .with_transport(ReqwestHttpReplicaV2Transport::create(url)?)
         .with_identity(identity)
@@ -213,11 +211,4 @@ async fn get_agent(network: Network) -> Result<Agent> {
         agent.fetch_root_key().await?;
     }
     Ok(agent)
-}
-
-fn get_waiter() -> impl Waiter {
-    Delay::builder()
-        .throttle(Duration::from_millis(500))
-        .timeout(Duration::from_secs(300))
-        .build()
 }
