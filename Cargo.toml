@@ -13,13 +13,12 @@ categories = ["command-line-utilities", "cryptography::cryptocurrencies"]
 
 [dependencies]
 anyhow = "1"
-candid = "0.7"
+candid = "0.8.4"
 cid = "0.7"
 clap = { version = "3", features = ["derive"] }
 dialoguer = "0.9"
-garcon = "0.2"
 hex = "0.4"
-ic-agent = "0.11"
+ic-agent = "0.23.2"
 mime_guess = "2"
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }
