@@ -10,7 +10,7 @@ The minting tool only knows how to mint to existing NFT canisters; it does not p
 
 ## Installation
 
-To install the minting tool you will need an installation of [Rust], updated at least to 1.58.0. Rust is usually installed via [Rustup], and there may be [extra steps depending on your operating system][instructions].
+To install the minting tool you will need an installation of [Rust], updated at least to 1.65.0. Rust is usually installed via [Rustup], and there may be [extra steps depending on your operating system][instructions].
 
 With Rust installed, run the following command:
 
