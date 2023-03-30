@@ -9,16 +9,18 @@ use std::{
     fs::{self, File},
     path::{Path, PathBuf},
     process,
+    sync::Arc,
 };
 
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use candid::Principal;
 use cid::Cid;
 use clap::Parser;
 use dialoguer::Confirm;
 use ic_agent::{
-    agent::http_transport::ReqwestHttpReplicaV2Transport, identity::BasicIdentity, Agent,
-    AgentError,
+    agent::http_transport::ReqwestHttpReplicaV2Transport,
+    identity::{BasicIdentity, Secp256k1Identity},
+    Agent, AgentError, Identity,
 };
 use sha2::{Digest, Sha256};
 use types::*;
@@ -47,9 +49,11 @@ async fn rmain() -> Result<()> {
     }
     let canister = mint.canister;
     let owner = mint.owner;
+    let pem = mint.pem_file.map(|f| std::fs::read(f)).transpose()?;
     let agent = get_agent(
         &mint.network,
         mint.fetch_root_key || mint.network == "local",
+        pem.as_deref(),
     )
     .await?;
     let res = agent
@@ -177,6 +181,9 @@ struct Args {
     /// Fetches the root key for the network. Auto-set for `--network local`. Do not use this with real data or on the real IC.
     #[clap(long)]
     fetch_root_key: bool,
+    /// Path to the authentication key. If unset, will attempt to use your default DFX identity.
+    #[clap(long)]
+    pem_file: Option<PathBuf>,
 }
 
 #[derive(Deserialize)]
@@ -184,29 +191,50 @@ struct DefaultIdentity {
     default: String,
 }
 
-async fn get_agent(network: &str, fetch_root_key: bool) -> Result<Agent> {
+async fn get_agent(network: &str, fetch_root_key: bool, pem: Option<&[u8]>) -> Result<Agent> {
     let url = match network {
         "local" => "http://localhost:4943",
         "ic" => "https://ic0.app",
         url => url,
     };
     let user_home = env::var_os("HOME").unwrap();
-    let file = File::open(Path::new(&user_home).join(".config/dfx/identity.json"))
-        .context("Configure an identity in `dfx` or provide an --identity flag")?;
-    let default: DefaultIdentity = serde_json::from_reader(file)?;
-    let pemfile = PathBuf::from_iter([
-        &*user_home,
-        ".config/dfx/identity/".as_ref(),
-        default.default.as_ref(),
-        "identity.pem".as_ref(),
-    ]);
-    let identity = BasicIdentity::from_pem_file(pemfile)?;
+    let identity = match pem {
+        Some(pem) => get_identity(pem)?,
+        None => {
+            let file = File::open(Path::new(&user_home).join(".config/dfx/identity.json"))
+        .map_err(|_| anyhow!("Failed to read identity.json. Configure an identity in `dfx` or provide a `--pem-file` flag"))?;
+            let default: DefaultIdentity = serde_json::from_reader(file)?;
+            let pemfile = PathBuf::from_iter([
+                &*user_home,
+                ".config/dfx/identity/".as_ref(),
+                default.default.as_ref(),
+                "identity.pem".as_ref(),
+            ]);
+            let pem = std::fs::read(pemfile).map_err(|_| {
+                anyhow!("Failed to read default identity. Try again with a `--pem-file` flag")
+            })?;
+            get_identity(&pem).map_err(|_| {
+                anyhow!("Failed to load the default identity. Try again with a `--pem-file` flag")
+            })?
+        }
+    };
+
     let agent = Agent::builder()
         .with_transport(ReqwestHttpReplicaV2Transport::create(url)?)
-        .with_identity(identity)
+        .with_arc_identity(identity)
         .build()?;
     if fetch_root_key {
         agent.fetch_root_key().await?;
     }
     Ok(agent)
+}
+
+fn get_identity(pem: &[u8]) -> Result<Arc<dyn Identity>> {
+    match Secp256k1Identity::from_pem(pem) {
+        Ok(id) => Ok(Arc::new(id)),
+        Err(e) => match BasicIdentity::from_pem(pem) {
+            Ok(id) => Ok(Arc::new(id)),
+            Err(_) => Err(e.into()),
+        },
+    }
 }
