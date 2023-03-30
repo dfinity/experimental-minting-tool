@@ -9,15 +9,13 @@ use std::{
     fs::{self, File},
     path::{Path, PathBuf},
     process,
-    time::Duration,
 };
 
 use anyhow::{bail, Context, Result};
 use candid::Principal;
 use cid::Cid;
-use clap::{ArgEnum, Parser};
+use clap::Parser;
 use dialoguer::Confirm;
-use garcon::{Delay, Waiter};
 use ic_agent::{
     agent::http_transport::ReqwestHttpReplicaV2Transport, identity::BasicIdentity, Agent,
     AgentError,
@@ -49,7 +47,11 @@ async fn rmain() -> Result<()> {
     }
     let canister = mint.canister;
     let owner = mint.owner;
-    let agent = get_agent(mint.network).await?;
+    let agent = get_agent(
+        &mint.network,
+        mint.fetch_root_key || mint.network == "local",
+    )
+    .await?;
     let res = agent
         .query(&canister, "supportedInterfacesDip721")
         .with_arg(Encode!()?)
@@ -108,11 +110,10 @@ async fn rmain() -> Result<()> {
         data: &data,
         key_val_data: metadata,
     };
-    let waiter = get_waiter();
     let res = agent
         .update(&mint.canister, "mintDip721")
         .with_arg(Encode!(&owner, &[metadata], &data)?)
-        .call_and_wait(waiter)
+        .call_and_wait()
         .await;
     let res = if let Err(AgentError::ReplicaError { reject_code: 3, .. }) = &res {
         res.context(format!("canister {canister} does not support minting"))?
@@ -140,9 +141,8 @@ async fn rmain() -> Result<()> {
 /// canister was initialized. Either of these things can cause an error.
 #[derive(Parser)]
 struct Args {
-    #[clap(arg_enum)]
-    /// The network the canister is running on.
-    network: Network,
+    /// The network the canister is running on. Can be 'ic', 'local', or a URL.
+    network: String,
     /// The DIP-721 compliant NFT container.
     canister: Principal,
     /// The owner of the new NFT.
@@ -174,14 +174,9 @@ struct Args {
     /// Skips confirmation for a minted NFT with no `--file`.
     #[clap(short)]
     yes: bool,
-}
-
-#[derive(Clone, ArgEnum)]
-pub enum Network {
-    /// The mainnet at <https://ic0.app/>.
-    Ic,
-    /// The local replica at <http://localhost:8000/>.
-    Local,
+    /// Fetches the root key for the network. Auto-set for `--network local`. Do not use this with real data or on the real IC.
+    #[clap(long)]
+    fetch_root_key: bool,
 }
 
 #[derive(Deserialize)]
@@ -189,10 +184,11 @@ struct DefaultIdentity {
     default: String,
 }
 
-async fn get_agent(network: Network) -> Result<Agent> {
+async fn get_agent(network: &str, fetch_root_key: bool) -> Result<Agent> {
     let url = match network {
-        Network::Local => "http://localhost:8000",
-        Network::Ic => "https://ic0.app",
+        "local" => "http://localhost:4943",
+        "ic" => "https://ic0.app",
+        url => url,
     };
     let user_home = env::var_os("HOME").unwrap();
     let file = File::open(Path::new(&user_home).join(".config/dfx/identity.json"))
@@ -209,15 +205,8 @@ async fn get_agent(network: Network) -> Result<Agent> {
         .with_transport(ReqwestHttpReplicaV2Transport::create(url)?)
         .with_identity(identity)
         .build()?;
-    if let Network::Local = network {
+    if fetch_root_key {
         agent.fetch_root_key().await?;
     }
     Ok(agent)
-}
-
-fn get_waiter() -> impl Waiter {
-    Delay::builder()
-        .throttle(Duration::from_millis(500))
-        .timeout(Duration::from_secs(300))
-        .build()
 }
