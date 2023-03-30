@@ -15,7 +15,7 @@ To install the minting tool you will need an installation of [Rust], updated at 
 With Rust installed, run the following command:
 
 ```sh
-cargo install --git https://github.com/dfinity/experimental-minting-tool
+cargo install --git https://github.com/dfinity/experimental-minting-tool --locked
 ```
 
 This will install the minting tool into your `PATH`, accessible via the `minting-tool` command.
